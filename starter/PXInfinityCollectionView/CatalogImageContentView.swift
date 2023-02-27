@@ -10,17 +10,23 @@ import UIKit
 @MainActor
 final class CatalogImageContentView: UIView {
     private var imageView: UIImageView!
-    private var _configuration: CatalogImageContentConfiguration!
+    private var _configuration: CatalogImageContentConfiguration
     private var loadingImageTask: Task<Void, Error>? {
         willSet {
             loadingImageTask?.cancel()
         }
     }
     
-    convenience init(configuration: CatalogImageContentConfiguration) {
-        self.init(frame: .null)
+    init(configuration: CatalogImageContentConfiguration) {
+        self._configuration = configuration
+        super.init(frame: .null)
         configureImageView()
-        self.configuration = configuration
+        updateImageView()
+    }
+    
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
     
     deinit {
@@ -44,6 +50,24 @@ final class CatalogImageContentView: UIView {
         
         self.imageView = imageView
     }
+    
+    private func updateImageView() {
+        imageView.image = nil
+        loadingImageTask = .detached { [_configuration, weak imageView] in
+            let imageName: String = _configuration.imageName
+            
+            guard
+                let image: UIImage = .init(named: imageName),
+                !Task.isCancelled
+            else {
+                return
+            }
+            
+            await MainActor.run { [weak imageView] in
+                imageView?.image = image
+            }
+        }
+    }
 }
 
 extension CatalogImageContentView: UIContentView {
@@ -60,21 +84,7 @@ extension CatalogImageContentView: UIContentView {
             }
             
             _configuration = newConfiguration
-            
-            imageView.image = nil
-            loadingImageTask = .detached { [_configuration, weak imageView] in
-                guard 
-                    let imageName: String = _configuration?.imageName,
-                    let image: UIImage = .init(named: imageName),
-                    !Task.isCancelled
-                else {
-                    return
-                }
-                
-                await MainActor.run { [weak imageView] in
-                    imageView?.image = image
-                }
-            }
+            updateImageView()
         }
     }
     
